@@ -54,17 +54,19 @@ def is_d_separated(G: nx.DiGraph, X: Set[str], Y: Set[str], M: Set[str]) -> bool
     if X & Y or X & M or Y & M:
         return True
     for _X in X:
-        for _Y in Y:
-            if (_X, _Y) in G.edges():
-                G.remove_edge(_X, _Y)
+        for _L in {*G.successors(_X)}:
+            G.remove_edge(_X, _L)
     return nx.d_separated(G, X, Y, M)
 
 
 def is_frontdoor_adjustement_set(G: nx.DiGraph, X: str, Y: str, M: Set[str]) -> bool:
-    # (i) no node in M is a ancestor of X; and
     if M & nx.ancestors(G, X):
         return False
-    # (ii) M blocks every path between X and Y that contains an arrow into X.
+    g_copy = G.copy()
+    for _M in M:
+        g_copy.remove_node(_M)
+    if nx.has_path(g_copy, X, Y):
+        return False
     if not (is_d_separated(G.copy(), {X}, M, set())):
         return False
     return is_d_separated(G.copy(), M, {Y}, {X})

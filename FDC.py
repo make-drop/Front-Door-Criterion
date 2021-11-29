@@ -49,7 +49,7 @@ def ACE(data: pd.DataFrame, X: str, Y: str, Z: Set[str]):
     return np.mean(Y1 - Y0)
 
 
-def is_d_separated(G: nx.DiGraph, X: Set[str], Y: Set[str], M: Set[str]) -> bool:
+def check_backdoor(G: nx.DiGraph, X: Set[str], Y: Set[str], M: Set[str]) -> bool:
     # If X, Y, Z are not disjoint, then X and Y are d-separated by default
     if X & Y or X & M or Y & M:
         return True
@@ -67,9 +67,9 @@ def is_frontdoor_adjustement_set(G: nx.DiGraph, X: str, Y: str, M: Set[str]) -> 
         g_copy.remove_node(_M)
     if nx.has_path(g_copy, X, Y):
         return False
-    if not (is_d_separated(G.copy(), {X}, M, set())):
+    if not (check_backdoor(G.copy(), {X}, M, set())):
         return False
-    return is_d_separated(G.copy(), M, {Y}, {X})
+    return check_backdoor(G.copy(), M, {Y}, {X})
 
 
 print(is_frontdoor_adjustement_set(G, X="X", Y="Y", M={"M"}))

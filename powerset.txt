@@ -1,0 +1,1 @@
+https://stackoverflow.com/questions/1482308/how-to-get-all-subsets-of-a-set-powerset

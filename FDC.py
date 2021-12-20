@@ -52,7 +52,7 @@ def ACE(data: pd.DataFrame, X: str, Y: str, Z: Set[str]):
 def check_backdoor(G: nx.DiGraph, X: Set[str], Y: Set[str], M: Set[str]) -> bool:
     # If X, Y, Z are not disjoint, then X and Y are d-separated by default
     if X & Y or X & M or Y & M:
-        return True
+        raise Exception("X, Y and Z have to be disjointed.")
     for _X in X:
         for _L in {*G.successors(_X)}:
             G.remove_edge(_X, _L)

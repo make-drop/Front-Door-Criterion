@@ -111,9 +111,11 @@ def compute_causal_effect_with_front_door_criterion(_data: pd.DataFrame, graph: 
     if found:
         _effect = np.zeros(len(adjustment_set))
         i = 0
+        # We compute for each variable K in the adjustment set the effect from X to Y
         for k in adjustment_set:
             _effect[i] = linear_model(_data, x=x, y=k, adjustment_set=set()) * \
                          linear_model(_data, x=k, y=y, adjustment_set={x})
+        # The estimated effects for the different paths are summed up
         return np.sum(_effect)
     else:
         raise Exception("No adjustment set found.")

@@ -7,77 +7,120 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from typing import Set
+from typing import Set, List
+from itertools import chain, combinations
 
 G = nx.DiGraph()
-E_V = [("X", "M"), ("M", "Y"), ("Z", "X"), ("Z", "Y")]
-G.add_edges_from(E_V)  # Add exogenous and endogenous edges to graph
-pos = nx.spiral_layout(G)  # Predefine graph layout
-_ = nx.draw_networkx_labels(G, pos)  # Plot node labels
-sty = {"min_source_margin": 12, "min_target_margin": 12}  # Set min distance from labels
-_ = nx.draw_networkx_edges(G, pos, E_V, style="solid", **sty)  # Plot solid endogenous edges
+E_U = [("U_i", "X_i"), ("U_i", "Y_i"), ("e_X_i", "X_i"), ("e_M_i", "M_i"), ("e_Y_i", "Y_i")]
+E_V = [("X_i", "M_i"), ("M_i", "Y_i")]
+G.add_edges_from(E_U + E_V)
+pos = nx.spectral_layout(G)
+_ = nx.draw_networkx_labels(G, pos)
+sty = {"min_source_margin": 12, "min_target_margin": 12}
+_ = nx.draw_networkx_edges(G, pos, E_U, style="dashed", **sty)
+_ = nx.draw_networkx_edges(G, pos, E_V, style="solid", **sty)
 
 
 def sample_data(size: int = int(1e6), seed: int = 31):
-    # Set random generator seed for results reproducibility
     np.random.seed(seed)
-    U = np.random.normal(0, 1, size)
-    Z = np.random.normal(0, 1, size)
-    e_X = np.random.normal(0, 1, size)
-    e_M = np.random.normal(0, 1, size)
-    e_Y = np.random.normal(0, 1, size)
-    X = 0.5 * U + e_X
-    M = 0.5 * X + e_M
-    Y = 0.5 * M + 0.5 * U + e_Y
-    return pd.DataFrame({"X": X, "M": M, "Y": Y, "Z": Z})
+    U_i = np.random.normal(0, 1, size)
+    Z_i = np.random.normal(0, 1, size)
+    e_X_i = np.random.normal(0, 1, size)
+    e_M_i = np.random.normal(0, 1, size)
+    e_Y_i = np.random.normal(0, 1, size)
+    X_i = 0.5 * U_i + e_X_i
+    M_i = 0.5 * X_i + e_M_i
+    Y_i = 0.5 * M_i + 0.5 * U_i + e_Y_i
+    return pd.DataFrame(
+        {"X_i": X_i, "M_i": M_i, "Y_i": Y_i, "U_i": U_i, "Z_i": Z_i, "e_X_i": e_X_i, "e_M_i": e_M_i, "e_Y_i": e_Y_i})
 
 
 data = sample_data(size=100000)
 data.describe()
 
 
-def ACE(data: pd.DataFrame, X: str, Y: str, Z: Set[str]):
-    # Define the regresion model formula
-    formula = f"{Y} ~ {X}"
-    if len(Z) != 0: formula += "+" + "+".join(Z)
-    # Fit Ordinary Least Square regression model
-    estimator = sm.OLS.from_formula(formula, data).fit()
-    # Compute potential outcomes by fixing X
-    Y1 = estimator.predict(data.assign(**{X: 1}))
-    Y0 = estimator.predict(data.assign(**{X: 0}))
-    # Compute average causal effect
+def linear_model(_data: pd.DataFrame, x: str, y: str, adjustment_set: Set[str]):
+    formula = f"{y} ~ {x}"
+    if len(adjustment_set) != 0:
+        formula += "+" + "+".join(adjustment_set)
+    estimator = sm.OLS.from_formula(formula, _data).fit()
+    Y1 = estimator.predict(_data.assign(**{x: 1}))
+    Y0 = estimator.predict(_data.assign(**{x: 0}))
     return np.mean(Y1 - Y0)
 
 
-def check_backdoor(G: nx.DiGraph, X: Set[str], Y: Set[str], M: Set[str]) -> bool:
-    # If X, Y, Z are not disjoint, then X and Y are d-separated by default
-    if X & Y or X & M or Y & M:
+def augmented_graph(graph: nx.DiGraph, x: Set[str]):
+    g_copy = graph.copy()
+    for _X in x:
+        for _L in {*g_copy.successors(_X)}:
+            g_copy.remove_edge(_X, _L)
+    return g_copy
+
+
+def has_backdoor_paths(graph: nx.DiGraph, x: Set[str], y: Set[str], adjustment_set: Set[str]) -> bool:
+    if x & y or x & adjustment_set or y & adjustment_set:
         raise Exception("X, Y and Z have to be disjointed.")
-    for _X in X:
-        for _L in {*G.successors(_X)}:
-            G.remove_edge(_X, _L)
-    return nx.d_separated(G, X, Y, M)
+    graph_augmented = augmented_graph(graph, x)
+    return not nx.d_separated(graph_augmented, x, y, adjustment_set)
 
 
-def is_frontdoor_adjustement_set(G: nx.DiGraph, X: str, Y: str, M: Set[str]) -> bool:
-    if M & nx.ancestors(G, X):
-        return False
-    g_copy = G.copy()
-    for _M in M:
+def is_interceptor(graph: nx.DiGraph, x: str, y: str, adjustment_set: Set[str]) -> bool:
+    g_copy = graph.copy()
+    for _M in adjustment_set:
         g_copy.remove_node(_M)
-    if nx.has_path(g_copy, X, Y):
-        return False
-    if not (check_backdoor(G.copy(), {X}, M, set())):
-        return False
-    return check_backdoor(G.copy(), M, {Y}, {X})
+    return not nx.has_path(g_copy, x, y)
 
 
-print(is_frontdoor_adjustement_set(G, X="X", Y="Y", M={"M"}))
+def is_front_door_adjustment_set(graph: nx.DiGraph, x: str, y: str, adjustment_set: Set[str]) -> bool:
+    # the adjustment set has to be descendant of X
+    if adjustment_set & nx.ancestors(graph, x):
+        return False
+    # checks if the adjustment set intercepts all paths between X and Y
+    if not is_interceptor(graph, x, y, adjustment_set):
+        return False
+    # check that from X to the adjustment set there are no backdoor paths
+    if has_backdoor_paths(graph, {x}, adjustment_set, set()):
+        return False
+    # check that from the adjustment set to Y given X there are no backdoor paths
+    return not has_backdoor_paths(graph.copy(), adjustment_set, {y}, {x})
+
+
+def find_front_door_adjustment_set(graph: nx.DiGraph, x: str, y: str) -> List:
+    # we consider only the power set of the descendants of x
+    descendants_of_x = nx.descendants(graph, x)
+    # we remove Y from the descendant of X
+    descendants_of_x.remove(y)
+    power_set_of_descendants_of_x = chain.from_iterable(
+        combinations(descendants_of_x, r) for r in range(len(descendants_of_x) + 1))
+    # we order the power set according to cardinality
+    power_set_of_descendants_of_x = sorted(power_set_of_descendants_of_x, key=len)
+    # we look for the smallest set that meets the front door criterion
+    i = 0
+    found = False
+    adjustment_set = set()
+    while not found and i < len(power_set_of_descendants_of_x):
+        if is_front_door_adjustment_set(graph, x, y, set(power_set_of_descendants_of_x[i])):
+            found = True
+            adjustment_set = set(power_set_of_descendants_of_x[i])
+        i += 1
+    return [adjustment_set, found]
+
+
+def compute_causal_effect_with_front_door_criterion(_data: pd.DataFrame, graph: nx.DiGraph, x: str, y: str):
+    adjustment_set, found = find_front_door_adjustment_set(graph, x, y)
+    if found:
+        _effect = np.zeros(len(adjustment_set))
+        i = 0
+        for k in adjustment_set:
+            _effect[i] = linear_model(_data, x=x, y=k, adjustment_set=set()) * \
+                         linear_model(_data, x=k, y=y, adjustment_set={x})
+        return np.sum(_effect)
+    else:
+        raise Exception("No adjustment set found.")
+
 
 ace = 0.25
 
-t_1 = ACE(data, X="X", Y="M", Z=set())
-t_2 = ACE(data, X="M", Y="Y", Z={"X"})
-t = t_1 * t_2
+effect = compute_causal_effect_with_front_door_criterion(data, G, "X_i", "Y_i")
 
-print(f"Estimated ACE: {t:.3}, Real ACE: {ace:.3}, Relative Error: {(np.abs(((t - ace) / ace) * 100)):.4}%")
+print(f"Estimated ACE: {effect:.3}, Real ACE: {ace:.3}, Relative Error: {(np.abs(((effect - ace) / ace) * 100)):.4}%")

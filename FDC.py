@@ -115,6 +115,7 @@ def compute_causal_effect_with_front_door_criterion(_data: pd.DataFrame, graph: 
         for k in adjustment_set:
             _effect[i] = linear_model(_data, x=x, y=k, adjustment_set=set()) * \
                          linear_model(_data, x=k, y=y, adjustment_set={x})
+            i = i + 1
         # The estimated effects for the different paths are summed up
         return np.sum(_effect)
     else:

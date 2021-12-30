@@ -122,8 +122,8 @@ def compute_causal_effect_with_front_door_criterion(_data: pd.DataFrame, graph: 
         raise Exception("No adjustment set found.")
 
 
-ace = 0.25
+true_ace = 0.25
 
 effect = compute_causal_effect_with_front_door_criterion(data, G, "X_i", "Y_i")
 
-print(f"Estimated ACE: {effect:.3}, Real ACE: {ace:.3}, Relative Error: {(np.abs(((effect - ace) / ace) * 100)):.4}%")
+print(f"Estimated ACE: {effect:.3}, Real ACE: {true_ace:.3}, Relative Error: {(np.abs(((effect - true_ace) / true_ace) * 100)):.4}%")

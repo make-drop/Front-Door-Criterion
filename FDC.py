@@ -24,7 +24,7 @@ _ = nx.draw_networkx_edges(G, pos, E_V, style="solid", **sty)
 def sample_data(size: int = int(1e6), seed: int = 31):
     np.random.seed(seed)
     U_i = np.random.normal(0, 1, size)
-    Z_i = np.random.normal(0, 1, size)
+    Z_i = np.random.uniform(0, 1, size)
     e_X_i = np.random.normal(0, 1, size)
     e_M_i = np.random.normal(0, 1, size)
     e_Y_i = np.random.normal(0, 1, size)

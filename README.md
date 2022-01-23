@@ -1,2 +1,2 @@
-# frontdoor-criterion
- Given a causal graph with the networkx library, this is application of the frontdoor criterion
+# Front-Door Criterion
+Implementation of "Marc F. Bellemare, Jeffrey R. Bloem: The Paper of How: Estimating Treatment Effects Using the Front-Door Criterion. March 4, 2020"
